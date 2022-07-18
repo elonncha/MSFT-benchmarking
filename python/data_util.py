@@ -115,6 +115,10 @@ def clean_CDCPlaces(tractFIPS):
     """
 
     file_name = [file for file in os.listdir('../data/raw') if 'health_cdcplaces' in file]
+    acs = pd.read_csv('../data/raw/2019_SES_acs.csv').loc[:,['TractFIPS', 'pop_total']]
+    acs['TractFIPS'] = acs['TractFIPS'].astype('str')
+
+    # find common column names
     column_list = []
     df_list = []
     for file in file_name:
@@ -130,11 +134,18 @@ def clean_CDCPlaces(tractFIPS):
     for i,df in enumerate(df_list):
         df = df.loc[df.TractFIPS.isin(tractFIPS),
                     np.append(['TractFIPS'],new_column_list)].reset_index(drop = True)
+        df['TractFIPS'] = df['TractFIPS'].astype('str')
+        #df = df.merge(acs, on = 'TractFIPS', how = 'left')
+        #for c in df.columns.values[1:len(df.columns.values)-1]:
+            #wm = np.average(a = df[c], weights = df['pop_total'])
+
         df.to_csv('../data/cleaned/{0}'.format(file_name[i]), index = False)
 
+        # melting df
         df_melt = df.melt(id_vars=['TractFIPS'], value_vars=df.columns.values[1:])
         df_melt['year'] = file_name[i].split('_')[0]
         melt_df_list.append(df_melt)
+
 
     pd.concat(melt_df_list).reset_index(drop = True).to_csv('../data/cleaned/health_cdcplaces_melt.csv', index = False)
 
