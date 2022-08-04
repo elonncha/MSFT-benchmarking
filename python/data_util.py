@@ -8,6 +8,63 @@ import geopandas as gpd
 import numpy as np
 from functools import reduce
 
+
+### housekeeping
+def load_AtlantaCT_FIPS():
+    df = pd.read_csv('../data/raw/2019_health_cdcplaces.csv')
+    return df['TractFIPS'][df.PlaceName == 'Atlanta']
+
+
+def melt_df(dataframe):
+    '''
+
+    :param dataframe: e.g. 'health_cdcplaces'
+    :return:
+    '''
+
+    file_name = [file for file in os.listdir('../data/cleaned') if dataframe in file]
+    df_list = [pd.read_csv('../data/cleaned/{0}'.format(f)) for f in file_name]
+    melt_df_list = []
+    for i, df in enumerate(df_list):
+        df_melt = df.melt(id_vars=['TractFIPS'], value_vars=df.columns.values[1:])
+        df_melt['year'] = file_name[i].split('_')[0]
+        melt_df_list.append(df_melt)
+
+    pd.concat(melt_df_list).reset_index(drop = True).to_csv('../data/cleaned/{0}_melt.csv'.format(dataframe), index = False)
+
+
+def ct_neighborhood_crosswalk(ct_address, neighborhood_address):
+    '''
+
+    :param ct_address:
+    :param neighborhood_address:
+    :return:
+    '''
+
+    # neighborhood_address = '../data/cleaned/neighborhood/neighborhood.shp'
+    # ct_address = '../data/cleaned/tract_Atlanta_2019/tract_Atlanta_2019.shp'
+
+    ct, nbh = gpd.read_file(ct_address), gpd.read_file(neighborhood_address)
+    nbh = nbh.to_crs(crs = ct.crs)
+    crswk = gpd.overlay(ct, nbh, how = 'intersection')
+    crswk['area'] = crswk['geometry'].to_crs(epsg = 3857).area
+
+    crswk = crswk.loc[:,['GEOID','NAME','area']].\
+                rename(columns = {'GEOID':'TractFIPS'}).\
+                join(crswk.groupby('NAME').agg({'area':'sum'}).
+                     rename(columns = {'area':'a'}), on = 'NAME', how = 'left')
+
+    crswk['percent'] = crswk['area'] / crswk['a']
+
+    crswk.loc[:,['TractFIPS','NAME','percent']].to_csv('../data/cleaned/crosswalk.csv',index = False)
+
+
+
+
+
+
+
+### dataset
 def download_CDCPlaces(years):
     """
     data earlier than 2020 is from 500 cities (CT within city limit only)
@@ -57,19 +114,14 @@ def download_ACS(year, api_key,
     df = pd.DataFrame.from_dict(df)
     df['TractFIPS'] = df.state + df.county + df.tract
     output = df.loc[df.county.isin(county_id), :]. \
-        drop(columns=['tract']). \
+        drop(columns=['tract','state','county']). \
         reset_index(drop=True)
 
     # rename columns and write as csv
     for i, code in enumerate(acs5_variable_list):
         output = output.rename(columns={code: acs_name_list[i]})
 
-    output.to_csv('../data/raw/{0}_SES_acs.csv'.format(year), index = False)
-
-
-def load_AtlantaCT_FIPS():
-    df = pd.read_csv('../data/raw/2019_health_cdcplaces.csv')
-    return df['TractFIPS'][df.PlaceName == 'Atlanta']
+    output.to_csv('../data/raw/{0}_SES_acs_{1}.csv'.format(year, table), index = False)
 
 
 def download_TIGERS(year, layer):
@@ -86,11 +138,27 @@ def download_TIGERS(year, layer):
         zip_ref.extractall(path)
 
 
+def clean_neighborhood_shp(shp_address, neighborhood_name):
+    '''
+
+    :param shp_address: shp file
+    :param neighborhood_name: neighborhoods of interest
+    :return:
+    '''
+    #shp_address = '../data/raw/Atlanta_Neighborhoods/Atlanta_Neighborhoods.shp'
+    neighborhood_name = ['Center Hill', 'Grove Park', 'Knight Park/Howell Station', 'Historic Westin Heights/Bankhead']
+
+    shp = gpd.read_file(shp_address)
+    shp = shp.loc[shp.NAME.isin(neighborhood_name),['OBJECTID','NAME','geometry']]
+
+    shp.to_file('../data/cleaned/neighborhood/neighborhood.shp')
+
+
 def clean_TIGERS(year, place_name = 'Atlanta'):
     """
 
     :param year:
-    :param layer:
+    :param place_name:
     :return:
     """
 
@@ -105,22 +173,17 @@ def clean_TIGERS(year, place_name = 'Atlanta'):
     shp_tract.to_file('../data/cleaned/tract_{0}_{1}/tract_{0}_{1}.shp'.format(place_name, year))
 
 
-
-
 def clean_CDCPlaces(tractFIPS):
     """
 
-    :param tractFIPS:
+    :param tractFIPS: tract fips of interest
     :return:
     """
 
     file_name = [file for file in os.listdir('../data/raw') if 'health_cdcplaces' in file]
-    acs = pd.read_csv('../data/raw/2019_SES_acs.csv').loc[:,['TractFIPS', 'pop_total']]
-    acs['TractFIPS'] = acs['TractFIPS'].astype('str')
 
     # find common column names
-    column_list = []
-    df_list = []
+    column_list, df_list = [], []
     for file in file_name:
         df = pd.read_csv('../data/raw/{0}'.format(file))
         column_list.append(df.columns.values)
@@ -130,22 +193,17 @@ def clean_CDCPlaces(tractFIPS):
     f = np.frompyfunc(lambda x: '_CrudePrev' in x, 1, 1)
     new_column_list = new_column_list[np.where(f(new_column_list))]
 
-    melt_df_list = []
     for i,df in enumerate(df_list):
         df = df.loc[df.TractFIPS.isin(tractFIPS),
                     np.append(['TractFIPS'],new_column_list)].reset_index(drop = True)
         df['TractFIPS'] = df['TractFIPS'].astype('str')
-        #df = df.merge(acs, on = 'TractFIPS', how = 'left')
-        #for c in df.columns.values[1:len(df.columns.values)-1]:
-            #wm = np.average(a = df[c], weights = df['pop_total'])
-
         df.to_csv('../data/cleaned/{0}'.format(file_name[i]), index = False)
 
-        # melting df
-        df_melt = df.melt(id_vars=['TractFIPS'], value_vars=df.columns.values[1:])
-        df_melt['year'] = file_name[i].split('_')[0]
-        melt_df_list.append(df_melt)
+
+def clean_ACS(tractFIPS):
+    pass
 
 
-    pd.concat(melt_df_list).reset_index(drop = True).to_csv('../data/cleaned/health_cdcplaces_melt.csv', index = False)
 
+### statistics
+def compute_statistics(df_file, crosswalk_file):
