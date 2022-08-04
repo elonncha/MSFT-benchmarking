@@ -16,7 +16,7 @@ clean_TIGERS(year = '2020', place_name = 'Atlanta')
 clean_TIGERS(year = '2021', place_name = 'Atlanta')
 
 
-''' ACS DATA'''
+''' ACS '''
 acs5st_variable_list = ['S0601_C01_014E', 'S0601_C01_015E', 'S0601_C01_017E', 'S0601_C01_021E',  # race/ethnicity precentage
                         'S1701_C02_001E', "S2201_C01_001E", "S2704_C03_006E"
                         ]
@@ -49,3 +49,5 @@ download_ACS(year = 2019, api_key = 'd54b04fce5ead0b754d8951da1ced097f3d050e1',
                  state_id = '13', county_id = ['121', '089'],
                  acs5_variable_list = acs5dp_variable_list, acs_name_list = acs5dp_name_list
                  )
+
+clean_ACS(tractFIPS=load_AtlantaCT_FIPS(), year = '2019')

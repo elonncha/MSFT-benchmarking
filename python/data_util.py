@@ -200,10 +200,28 @@ def clean_CDCPlaces(tractFIPS):
         df.to_csv('../data/cleaned/{0}'.format(file_name[i]), index = False)
 
 
-def clean_ACS(tractFIPS):
-    pass
+def clean_ACS(tractFIPS, year):
+    file_name = [file for file in os.listdir('../data/raw') if '{0}_SES_acs'.format(year) in file]
+    df_list = [pd.read_csv('../data/raw/'+ f) for f in file_name]
 
+    df = reduce(lambda x, y: pd.merge(x, y, on='TractFIPS'), df_list)
+    df = df.loc[df.TractFIPS.isin(tractFIPS),:]
+    tractFIPSCol = df['TractFIPS']
+    df = df.drop(columns = ['TractFIPS'])
+    df.insert(0,'TractFIPS', tractFIPSCol.values)
 
+    df.to_csv('../data/cleaned/{0}_SES_acs.csv'.format(year), index = False)
 
 ### statistics
-def compute_statistics(df_file, crosswalk_file):
+def compute_weighted_avg(df_file, pop_file, crosswalk_file):
+    '''
+
+    :param df_file:
+    :param pop_file:
+    :param crosswalk_file:
+    :return:
+    '''
+
+    # df_file = '../data/cleaned/2020_health_cdcplaces.csv'
+    # crosswalk_file = '../data/cleaned/crosswalk.csv'
+    # pop_file = '../data/
