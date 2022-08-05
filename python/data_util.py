@@ -213,15 +213,65 @@ def clean_ACS(tractFIPS, year):
     df.to_csv('../data/cleaned/{0}_SES_acs.csv'.format(year), index = False)
 
 ### statistics
-def compute_weighted_avg(df_file, pop_file, crosswalk_file):
+def compute_weighted_avg(df_file, pop_file):
     '''
 
     :param df_file:
     :param pop_file:
-    :param crosswalk_file:
     :return:
     '''
 
     # df_file = '../data/cleaned/2020_health_cdcplaces.csv'
+    # pop_file = '../data/cleaned/2019_SES_acs.csv'
+
+    # load and merge two datasets
+    df = pd.read_csv(df_file)
+    pop = pd.read_csv(pop_file).loc[:,['TractFIPS','pop_total']]
+
+    df['TractFIPS'] = df['TractFIPS'].astype('str')
+    pop['TractFIPS'] = pop['TractFIPS'].astype('str')
+
+    df = df.merge(pop, on='TractFIPS', how = 'left')
+
+    # extract weight
+    w = df['pop_total']
+    df = df.drop(columns = ['pop_total'])
+
+    avg = df.groupby([True]*len(df)).agg(lambda x: np.average(x, weights = w)).reset_index()
+    avg = avg.rename(columns = {'index':'TractFIPS'})
+    avg['TractFIPS'] = 'cityAVG'
+
+    return(avg)
+
+
+def crosswalk_multiplier(df_file, crosswalk_file):
+    # df_file = '../data/cleaned/2020_health_cdcplaces.csv'
     # crosswalk_file = '../data/cleaned/crosswalk.csv'
-    # pop_file = '../data/
+
+    df = pd.read_csv(df_file)
+    crwk = pd.read_csv(crosswalk_file)
+
+    df['TractFIPS'] = df['TractFIPS'].astype('str')
+    crwk['TractFIPS'] = crwk['TractFIPS'].astype('str')
+
+
+    df = df.merge(crwk, on = 'TractFIPS', how = 'right')
+    w, name = df['percent'], df['NAME']
+    df = df.drop(columns = ['TractFIPS', 'percent', 'NAME'])
+    df.insert(0, 'TractFIPS', name)
+
+    for c_index in range(1,df.shape[1]):
+        df.iloc[:,c_index] = df.iloc[:,c_index] * w
+
+    df = df.groupby('TractFIPS').agg(lambda x: sum(x)).reset_index()
+
+    return(df)
+
+
+
+def combine_output(df_file, crosswalk_file, pop_file):
+    neighrborhood_output = crosswalk_multiplier(df_file, crosswalk_file)
+    city_output = compute_weighted_avg(df_file, pop_file)
+
+    df = pd.read_csv(df_file)
+    CT85_output = df.loc[df.TractFIPS == 13121008500,:]
