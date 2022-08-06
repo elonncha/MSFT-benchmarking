@@ -221,12 +221,17 @@ def compute_weighted_avg(df_file, pop_file):
     :return:
     '''
 
-    # df_file = '../data/cleaned/2020_health_cdcplaces.csv'
+    # df_file = '../data/cleaned/2019_SES_acs.csv'
     # pop_file = '../data/cleaned/2019_SES_acs.csv'
 
     # load and merge two datasets
     df = pd.read_csv(df_file)
+    if 'pop_total' in df.columns.values:
+        df = df.drop(columns = ['pop_total'])
     pop = pd.read_csv(pop_file).loc[:,['TractFIPS','pop_total']]
+
+    # check if values are non-negative
+    df = df[(df >= 0).all(1)]
 
     df['TractFIPS'] = df['TractFIPS'].astype('str')
     pop['TractFIPS'] = pop['TractFIPS'].astype('str')
@@ -237,7 +242,8 @@ def compute_weighted_avg(df_file, pop_file):
     w = df['pop_total']
     df = df.drop(columns = ['pop_total'])
 
-    avg = df.groupby([True]*len(df)).agg(lambda x: np.average(x, weights = w)).reset_index()
+
+    avg = df.dropna().groupby([True]*len(df)).agg(lambda x: np.average(x, weights = w)).reset_index()
     avg = avg.rename(columns = {'index':'TractFIPS'})
     avg['TractFIPS'] = 'cityAVG'
 
@@ -251,6 +257,9 @@ def crosswalk_multiplier(df_file, crosswalk_file):
     df = pd.read_csv(df_file)
     crwk = pd.read_csv(crosswalk_file)
 
+    # check if values are non-negative
+    df = df[(df >= 0).all(1)]
+
     df['TractFIPS'] = df['TractFIPS'].astype('str')
     crwk['TractFIPS'] = crwk['TractFIPS'].astype('str')
 
@@ -263,7 +272,7 @@ def crosswalk_multiplier(df_file, crosswalk_file):
     for c_index in range(1,df.shape[1]):
         df.iloc[:,c_index] = df.iloc[:,c_index] * w
 
-    df = df.groupby('TractFIPS').agg(lambda x: sum(x)).reset_index()
+    df = df.dropna().groupby('TractFIPS').agg(lambda x: sum(x)).reset_index()
 
     return(df)
 
@@ -275,3 +284,6 @@ def combine_output(df_file, crosswalk_file, pop_file):
 
     df = pd.read_csv(df_file)
     CT85_output = df.loc[df.TractFIPS == 13121008500,:]
+
+
+    return(pd.concat([CT85_output, neighrborhood_output, city_output]).reset_index(drop = True))

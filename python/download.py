@@ -51,3 +51,21 @@ download_ACS(year = 2019, api_key = 'd54b04fce5ead0b754d8951da1ced097f3d050e1',
                  )
 
 clean_ACS(tractFIPS=load_AtlantaCT_FIPS(), year = '2019')
+
+
+
+
+
+
+
+
+x = combine_output(df_file = '../data/cleaned/2020_health_cdcplaces.csv',
+               crosswalk_file = '../data/cleaned/crosswalk.csv',
+               pop_file = '../data/cleaned/2019_SES_acs.csv')
+x.set_index('TractFIPS').transpose().to_csv('../data/toMSFT/health.csv')
+
+
+x = combine_output(df_file = '../data/cleaned/2019_SES_acs.csv',
+               crosswalk_file = '../data/cleaned/crosswalk.csv',
+               pop_file = '../data/cleaned/2019_SES_acs.csv')
+x.set_index('TractFIPS').transpose().to_csv('../data/toMSFT/acs.csv')
