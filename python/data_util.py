@@ -10,16 +10,23 @@ from functools import reduce
 
 
 ### housekeeping
-def load_AtlantaCT_FIPS():
+def load_Tract_FIPS(place_name):
+    '''
+    return a list of tractFIPS within the place of interest (e.g. 'Atlanta')
+
+    :param place_name: name of place
+    :return: a panda series of tractFIPS
+    '''
     df = pd.read_csv('../data/raw/2019_health_cdcplaces.csv')
-    return df['TractFIPS'][df.PlaceName == 'Atlanta']
+    return df['TractFIPS'][df.PlaceName == place_name]
 
 
 def melt_df(dataframe):
     '''
+    melt columns of cleaned dataframes into rows
 
     :param dataframe: e.g. 'health_cdcplaces'
-    :return:
+    :return: NONE
     '''
 
     file_name = [file for file in os.listdir('../data/cleaned') if dataframe in file]
@@ -36,8 +43,8 @@ def melt_df(dataframe):
 def ct_neighborhood_crosswalk(ct_address, neighborhood_address):
     '''
 
-    :param ct_address:
-    :param neighborhood_address:
+    :param ct_address: file address of census tract shp
+    :param neighborhood_address: file address of neighborhood shp
     :return:
     '''
 
@@ -146,7 +153,7 @@ def clean_neighborhood_shp(shp_address, neighborhood_name):
     :return:
     '''
     #shp_address = '../data/raw/Atlanta_Neighborhoods/Atlanta_Neighborhoods.shp'
-    neighborhood_name = ['Center Hill', 'Grove Park', 'Knight Park/Howell Station', 'Historic Westin Heights/Bankhead']
+    # neighborhood_name = ['Center Hill', 'Grove Park', 'Knight Park/Howell Station', 'Historic Westin Heights/Bankhead']
 
     shp = gpd.read_file(shp_address)
     shp = shp.loc[shp.NAME.isin(neighborhood_name),['OBJECTID','NAME','geometry']]
@@ -154,7 +161,7 @@ def clean_neighborhood_shp(shp_address, neighborhood_name):
     shp.to_file('../data/cleaned/neighborhood/neighborhood.shp')
 
 
-def clean_TIGERS(year, place_name = 'Atlanta'):
+def clean_TIGERS(year, place_name):
     """
 
     :param year:
@@ -167,7 +174,7 @@ def clean_TIGERS(year, place_name = 'Atlanta'):
 
     # find census tracts within the place boundary
     shp_tract = gpd.read_file(path_tract)
-    shp_tract = shp_tract.loc[shp_tract.GEOID.isin(load_AtlantaCT_FIPS().astype('str')),['COUNTYFP','GEOID','geometry']]
+    shp_tract = shp_tract.loc[shp_tract.GEOID.isin(load_Tract_FIPS(place_name).astype('str')),['COUNTYFP','GEOID','geometry']]
 
     os.mkdir('../data/cleaned/tract_{0}_{1}'.format(place_name, year))
     shp_tract.to_file('../data/cleaned/tract_{0}_{1}/tract_{0}_{1}.shp'.format(place_name, year))
@@ -212,6 +219,29 @@ def clean_ACS(tractFIPS, year):
 
     df.to_csv('../data/cleaned/{0}_SES_acs.csv'.format(year), index = False)
 
+
+def clean_Eviction(tractFIPS, year):
+    df = pd.read_csv('../data/raw/{0}_housing_eviction.csv'.format(year))
+    df = df.loc[df.TractFIPS.isin(tractFIPS), :]
+
+    pop = pd.read_csv('../data/cleaned/2019_SES_acs.csv').loc[:,['TractFIPS','housing_total']]
+
+    # compute eviction cases per household
+    df = df.merge(pop, on = 'TractFIPS')
+    df['eviction_percap'] = df['eviction'] / df['housing_total']
+    df = df.drop(columns = ['housing_total'])
+
+    df.to_csv('../data/cleaned/{0}_housing_eviction.csv'.format(year), index=False)
+
+
+def clean_tax_parcel():
+    fulton_parcel = gpd.read_file('../data/raw/Fulton_Tax_Parcels/Tax_Parcels.shp').loc[:,['ParcelID','Owner','TotAssess','TotAppr','LUCode','ClassCode','LandAcres','geometry']]
+    nbh = gpd.read_file('../data/cleaned/neighborhood/neighborhood.shp').to_crs(crs = fulton_parcel.crs)
+
+
+    nbh_parcel = fulton_parcel.loc[nbh.contains(fulton_parcel),:]
+    membership = gpd.overlay(fulton_parcel, nbh, how = 'intersection')
+
 ### statistics
 def compute_weighted_avg(df_file, pop_file):
     '''
@@ -230,7 +260,7 @@ def compute_weighted_avg(df_file, pop_file):
         df = df.drop(columns = ['pop_total'])
     pop = pd.read_csv(pop_file).loc[:,['TractFIPS','pop_total']]
 
-    # check if values are non-negative
+    # check if values are non-negative (acs codes NA as -666666)
     df = df[(df >= 0).all(1)]
 
     df['TractFIPS'] = df['TractFIPS'].astype('str')
